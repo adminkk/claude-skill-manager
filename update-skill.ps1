@@ -211,11 +211,36 @@ if ($IsOpenSpecProject) {
 }
 else {
 
-    Write-Host "Current directory is not an OpenSpec project."
+    try {
 
-    Write-Host "Skip OpenSpec Project Update." -ForegroundColor Yellow
+        Write-Host "Current directory is not an OpenSpec project."
 
-    $Skipped++
+        Write-Host "Initializing OpenSpec Project..."
+
+        Push-Location $ProjectDir
+
+        cmd /c "openspec init"
+
+        Pop-Location
+
+        if ($LASTEXITCODE -ne 0) {
+
+            throw "openspec init failed."
+
+        }
+
+        Write-Host "✓ OpenSpec Project Initialized." -ForegroundColor Green
+
+        $Success++
+
+    }
+    catch {
+
+        Write-Warning $_
+
+        $Failed++
+
+    }
 
 }
 
