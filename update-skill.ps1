@@ -1,12 +1,8 @@
 $ErrorActionPreference = "Stop"
 
-# ==============================
-# Claude Skill Updater
-# ==============================
-
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "      Claude Skill Updater v1.0"
+Write-Host "      Claude Skill Updater v2.0"
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -21,12 +17,15 @@ New-Item -ItemType Directory -Force -Path $temp | Out-Null
 ##################################################
 # 下载 GitHub ZIP（自动切换下载源）
 ##################################################
-
 function Download-GitHubZip {
 
     param(
+        [Parameter(Mandatory = $true)]
         [string]$Repo,
-        [string]$Branch,
+
+        [string]$Branch = "main",
+
+        [Parameter(Mandatory = $true)]
         [string]$OutFile
     )
 
@@ -36,25 +35,28 @@ function Download-GitHubZip {
         "https://ghproxy.com/https://github.com/$Repo/archive/refs/heads/$Branch.zip"
     )
 
-    foreach($url in $urls){
+    foreach ($url in $urls) {
 
         Write-Host "Trying: $url"
 
-        try{
+        try {
+
             Invoke-WebRequest `
                 -Uri $url `
                 -OutFile $OutFile `
                 -UseBasicParsing
 
-            Write-Host "Download Success" -ForegroundColor Green
-            return
+            Write-Host "Download Success." -ForegroundColor Green
+            return $true
         }
-        catch{
+        catch {
+
             Write-Warning "Failed."
+
         }
     }
 
-    throw "Download failed from all mirrors."
+    return $false
 }
 
 ##################################################
@@ -64,21 +66,28 @@ function Download-GitHubZip {
 Write-Host ""
 Write-Host "Updating Superpowers..." -ForegroundColor Cyan
 
-$zip = Join-Path $temp "superpowers.zip"
+try {
 
-Download-GitHubZip `
-    -Repo "obra/superpowers" `
-    -Branch "main" `
-    -OutFile $zip
+    $zip = Join-Path $temp "superpowers.zip"
 
-Expand-Archive `
-    -Path $zip `
-    -DestinationPath $temp `
-    -Force
+    $ok = Download-GitHubZip `
+        -Repo "obra/superpowers" `
+        -OutFile $zip
 
-$skillSource = Join-Path $temp "superpowers-main\skills"
+    if (-not $ok) {
+        throw "Unable to download Superpowers."
+    }
 
-if(Test-Path $skillSource){
+    Expand-Archive `
+        -Path $zip `
+        -DestinationPath $temp `
+        -Force
+
+    $skillSource = Join-Path $temp "superpowers-main\skills"
+
+    if (!(Test-Path $skillSource)) {
+        throw "skills directory not found."
+    }
 
     Copy-Item `
         "$skillSource\*" `
@@ -86,11 +95,12 @@ if(Test-Path $skillSource){
         -Recurse `
         -Force
 
-    Write-Host "Superpowers Updated." -ForegroundColor Green
-}
-else{
+    Write-Host "✓ Superpowers Updated." -ForegroundColor Green
 
-    Write-Warning "Superpowers skills folder not found."
+}
+catch {
+
+    Write-Warning $_
 
 }
 
@@ -101,31 +111,45 @@ else{
 Write-Host ""
 Write-Host "Updating OpenSpec..." -ForegroundColor Cyan
 
-if (Get-Command npm.cmd -ErrorAction SilentlyContinue) {
+try {
 
-    cmd /c "npm install -g @fission-ai/openspec@latest"
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
 
-    if ($LASTEXITCODE -eq 0) {
+    if ($null -eq $npm) {
+
+        Write-Warning "npm not found. Skip OpenSpec."
+
+    }
+    else {
+
+        Write-Host "Installing latest OpenSpec..."
+
+        cmd /c "npm install -g @fission-ai/openspec@latest"
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm install failed."
+        }
 
         Push-Location $ProjectDir
+
+        Write-Host "Running openspec update..."
 
         cmd /c "openspec update"
 
         Pop-Location
 
-        Write-Host "OpenSpec Updated." -ForegroundColor Green
+        if ($LASTEXITCODE -ne 0) {
+            throw "openspec update failed."
+        }
 
-    }
-    else {
-
-        Write-Warning "OpenSpec installation failed."
+        Write-Host "✓ OpenSpec Updated." -ForegroundColor Green
 
     }
 
 }
-else {
+catch {
 
-    Write-Warning "npm not found, skip OpenSpec."
+    Write-Warning $_
 
 }
 
@@ -133,14 +157,24 @@ else {
 # 清理
 ##################################################
 
-Remove-Item `
-    $temp `
-    -Recurse `
-    -Force
+try {
+
+    if (Test-Path $temp) {
+
+        Remove-Item `
+            $temp `
+            -Recurse `
+            -Force
+
+    }
+
+}
+catch {
+
+}
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Green
 Write-Host " All Skills Updated Successfully!"
 Write-Host "==========================================" -ForegroundColor Green
 Write-Host ""
-```
