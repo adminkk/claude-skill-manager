@@ -31,7 +31,7 @@ function Download-GitHubZip {
     )
 
     $urls = @(
-        "https://github.com/$Repo/archive/refs/heads/$Branch.zip",
+        #"https://github.com/$Repo/archive/refs/heads/$Branch.zip",
         "https://ghfast.top/https://github.com/$Repo/archive/refs/heads/$Branch.zip",
         "https://ghproxy.com/https://github.com/$Repo/archive/refs/heads/$Branch.zip"
     )
