@@ -101,27 +101,29 @@ else{
 Write-Host ""
 Write-Host "Updating OpenSpec..." -ForegroundColor Cyan
 
-if(Get-Command npm -ErrorAction SilentlyContinue){
+if (Get-Command npm.cmd -ErrorAction SilentlyContinue) {
 
-    npm install -g @fission-ai/openspec@latest
+    cmd /c "npm install -g @fission-ai/openspec@latest"
 
-    if(Get-Command openspec -ErrorAction SilentlyContinue){
+    if ($LASTEXITCODE -eq 0) {
 
         Push-Location $ProjectDir
 
-        openspec update
+        cmd /c "openspec update"
 
         Pop-Location
 
         Write-Host "OpenSpec Updated." -ForegroundColor Green
 
-    }else{
+    }
+    else {
 
-        Write-Warning "OpenSpec command not found."
+        Write-Warning "OpenSpec installation failed."
 
     }
 
-}else{
+}
+else {
 
     Write-Warning "npm not found, skip OpenSpec."
 
