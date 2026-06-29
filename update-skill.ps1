@@ -2,11 +2,11 @@ $ErrorActionPreference = "Stop"
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "      Claude Skill Updater v2.0"
+Write-Host "      Claude Skill Updater v2.1"
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-$ProjectDir = Get-Location
+$ProjectDir = (Get-Location).Path
 $SkillDir = Join-Path $ProjectDir ".claude\skills"
 
 New-Item -ItemType Directory -Force -Path $SkillDir | Out-Null
@@ -14,18 +14,19 @@ New-Item -ItemType Directory -Force -Path $SkillDir | Out-Null
 $temp = Join-Path $env:TEMP ("claude-skill-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $temp | Out-Null
 
+$Success = 0
+$Failed = 0
+$Skipped = 0
+
 ##################################################
-# 下载 GitHub ZIP（自动切换下载源）
+# 下载 Github ZIP
 ##################################################
+
 function Download-GitHubZip {
 
     param(
-        [Parameter(Mandatory = $true)]
         [string]$Repo,
-
         [string]$Branch = "main",
-
-        [Parameter(Mandatory = $true)]
         [string]$OutFile
     )
 
@@ -37,7 +38,7 @@ function Download-GitHubZip {
 
     foreach ($url in $urls) {
 
-        Write-Host "Trying: $url"
+        Write-Host "Trying $url"
 
         try {
 
@@ -46,21 +47,23 @@ function Download-GitHubZip {
                 -OutFile $OutFile `
                 -UseBasicParsing
 
-            Write-Host "Download Success." -ForegroundColor Green
             return $true
+
         }
         catch {
 
             Write-Warning "Failed."
 
         }
+
     }
 
     return $false
+
 }
 
 ##################################################
-# 更新 Superpowers
+# Superpowers
 ##################################################
 
 Write-Host ""
@@ -70,12 +73,12 @@ try {
 
     $zip = Join-Path $temp "superpowers.zip"
 
-    $ok = Download-GitHubZip `
+    if (!(Download-GitHubZip `
         -Repo "obra/superpowers" `
-        -OutFile $zip
+        -OutFile $zip)) {
 
-    if (-not $ok) {
-        throw "Unable to download Superpowers."
+        throw "Download failed."
+
     }
 
     Expand-Archive `
@@ -83,98 +86,166 @@ try {
         -DestinationPath $temp `
         -Force
 
-    $skillSource = Join-Path $temp "superpowers-main\skills"
+    $src = Join-Path $temp "superpowers-main\skills"
 
-    if (!(Test-Path $skillSource)) {
-        throw "skills directory not found."
+    if (!(Test-Path $src)) {
+
+        throw "skills folder not found."
+
     }
 
     Copy-Item `
-        "$skillSource\*" `
+        "$src\*" `
         $SkillDir `
-        -Recurse `
-        -Force
+        -Force `
+        -Recurse
 
     Write-Host "✓ Superpowers Updated." -ForegroundColor Green
+
+    $Success++
 
 }
 catch {
 
     Write-Warning $_
 
+    $Failed++
+
 }
 
 ##################################################
-# 更新 OpenSpec
+# OpenSpec CLI
 ##################################################
 
 Write-Host ""
-Write-Host "Updating OpenSpec..." -ForegroundColor Cyan
+Write-Host "Checking OpenSpec..." -ForegroundColor Cyan
 
-try {
+$npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
 
-    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+if ($null -eq $npm) {
 
-    if ($null -eq $npm) {
+    Write-Warning "npm not installed."
 
-        Write-Warning "npm not found. Skip OpenSpec."
+    $Skipped++
 
-    }
-    else {
+}
+else {
 
-        Write-Host "Installing latest OpenSpec..."
+    try {
+
+        Write-Host "Updating OpenSpec CLI..."
 
         cmd /c "npm install -g @fission-ai/openspec@latest"
 
         if ($LASTEXITCODE -ne 0) {
+
             throw "npm install failed."
+
         }
 
-        Push-Location $ProjectDir
+        Write-Host "✓ OpenSpec CLI Updated." -ForegroundColor Green
 
-        Write-Host "Running openspec update..."
+        $Success++
+
+    }
+    catch {
+
+        Write-Warning $_
+
+        $Failed++
+
+    }
+
+}
+
+##################################################
+# OpenSpec Project
+##################################################
+
+Write-Host ""
+Write-Host "Checking OpenSpec Project..." -ForegroundColor Cyan
+
+$IsOpenSpecProject = $false
+
+if (Test-Path (Join-Path $ProjectDir ".openspec")) {
+
+    $IsOpenSpecProject = $true
+
+}
+
+if (Test-Path (Join-Path $ProjectDir "openspec")) {
+
+    $IsOpenSpecProject = $true
+
+}
+
+if ($IsOpenSpecProject) {
+
+    try {
+
+        Push-Location $ProjectDir
 
         cmd /c "openspec update"
 
         Pop-Location
 
         if ($LASTEXITCODE -ne 0) {
+
             throw "openspec update failed."
+
         }
 
-        Write-Host "✓ OpenSpec Updated." -ForegroundColor Green
+        Write-Host "✓ OpenSpec Project Updated." -ForegroundColor Green
+
+        $Success++
+
+    }
+    catch {
+
+        Write-Warning $_
+
+        $Failed++
 
     }
 
 }
-catch {
+else {
 
-    Write-Warning $_
+    Write-Host "Current directory is not an OpenSpec project."
+
+    Write-Host "Skip OpenSpec Project Update." -ForegroundColor Yellow
+
+    $Skipped++
 
 }
 
 ##################################################
-# 清理
+# Cleanup
 ##################################################
 
 try {
 
-    if (Test-Path $temp) {
-
-        Remove-Item `
-            $temp `
-            -Recurse `
-            -Force
-
-    }
+    Remove-Item `
+        $temp `
+        -Recurse `
+        -Force `
+        -ErrorAction SilentlyContinue
 
 }
 catch {
 
 }
 
+##################################################
+# Result
+##################################################
+
 Write-Host ""
-Write-Host "==========================================" -ForegroundColor Green
-Write-Host " All Skills Updated Successfully!"
-Write-Host "==========================================" -ForegroundColor Green
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "Update Finished"
+Write-Host "------------------------------------------"
+Write-Host ("Success : {0}" -f $Success) -ForegroundColor Green
+Write-Host ("Skipped : {0}" -f $Skipped) -ForegroundColor Yellow
+Write-Host ("Failed  : {0}" -f $Failed) -ForegroundColor Red
+Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
